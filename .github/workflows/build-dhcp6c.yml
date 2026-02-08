@@ -57,16 +57,27 @@ jobs:
         run: |
           set -euxo pipefail
 
-          # 1) addrconf.c 需要 time.h（你之前已经加过也没关系）
-          A="mobile/src/main/cpp/wide-dhcpv6/addrconf.c"
-          grep -qE '^\s*#\s*include\s*<time\.h>' "$A" || sed -i '1i#include <time.h>' "$A"
+          W="mobile/src/main/cpp/wide-dhcpv6"
 
-          # 2) common.c: bcmp -> memcmp（最稳）
-          C="mobile/src/main/cpp/wide-dhcpv6/common.c"
-          sed -i 's/\bbcmp\s*(/memcmp(/g' "$C"
+          # 1) 给所有用到 time() 的 .c 文件补 <time.h>
+          for f in "$W"/*.c; do
+            if grep -qE '\btime\s*\(' "$f"; then
+              if ! grep -qE '^\s*#\s*include\s*<time\.h>' "$f"; then
+                sed -i '1i#include <time.h>' "$f"
+              fi
+            fi
+          done
 
-          # 3) 确保 memcmp 可用
-          grep -qE '^\s*#\s*include\s*<string\.h>' "$C" || sed -i '1i#include <string.h>' "$C"
+          # 2) bcmp -> memcmp（更通用）
+          sed -i 's/\bbcmp\s*(/memcmp(/g' "$W/common.c" || true)
+
+          # 3) 确保 memcmp 声明可用
+          if ! grep -qE '^\s*#\s*include\s*<string\.h>' "$W/common.c"; then
+            sed -i '1i#include <string.h>' "$W/common.c"
+          fi
+
+          # 输出确认一下（可选）
+          grep -n "include <time.h>" "$W"/*.c || true
 
 
       - name: Configure (CMake)
