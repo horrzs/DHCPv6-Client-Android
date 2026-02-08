@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       ABI: arm64-v8a
-      ANDROID_PLATFORM: android-21
+      ANDROID_PLATFORM: android-24
       NDK_VERSION: 26.2.11394342
 
     steps:
@@ -51,6 +51,22 @@ jobs:
             mv "$F.tmp" "$F"
           fi
           grep -n "include <time.h>" -n "$F" || true
+
+      - name: Patch wide-dhcpv6 for modern NDK
+        shell: bash
+        run: |
+          set -euxo pipefail
+
+          # 1) addrconf.c 需要 time.h（你之前已经加过也没关系）
+          A="mobile/src/main/cpp/wide-dhcpv6/addrconf.c"
+          grep -qE '^\s*#\s*include\s*<time\.h>' "$A" || sed -i '1i#include <time.h>' "$A"
+
+          # 2) common.c: bcmp -> memcmp（最稳）
+          C="mobile/src/main/cpp/wide-dhcpv6/common.c"
+          sed -i 's/\bbcmp\s*(/memcmp(/g' "$C"
+
+          # 3) 确保 memcmp 可用
+          grep -qE '^\s*#\s*include\s*<string\.h>' "$C" || sed -i '1i#include <string.h>' "$C"
 
 
       - name: Configure (CMake)
