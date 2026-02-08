@@ -1,0 +1,94 @@
+name: Build dhcp6c binaries (NDK)
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "mobile/CMakeLists.txt"
+      - "mobile/src/main/cpp/**"
+      - ".github/workflows/build-dhcp6c.yml"
+  pull_request:
+    paths:
+      - "mobile/CMakeLists.txt"
+      - "mobile/src/main/cpp/**"
+      - ".github/workflows/build-dhcp6c.yml"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86, x86_64]
+
+    env:
+      ANDROID_PLATFORM: android-21
+      NDK_VERSION: 26.2.11394342
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK + CMake + Ninja
+        shell: bash
+        run: |
+          set -euxo pipefail
+          sdkmanager --install "ndk;${NDK_VERSION}" "cmake;3.22.1" "platforms;android-21"
+          sudo apt-get update
+          sudo apt-get install -y ninja-build
+
+      - name: Configure (CMake)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          export ANDROID_NDK_HOME="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
+          cmake -S mobile -B "build-${{ matrix.abi }}" \
+            -G Ninja \
+            -DANDROID_ABI="${{ matrix.abi }}" \
+            -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
+            -DANDROID_NDK="${ANDROID_NDK_HOME}" \
+            -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build (CMake)
+        shell: bash
+        run: |
+          set -euxo pipefail
+          cmake --build "build-${{ matrix.abi }}" --target libdhcp6c.so libdhcp6ctl.so
+
+      - name: Collect outputs
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p "out/${{ matrix.abi }}"
+          # Ninja 默认在 build目录里直接生成目标文件；不同生成器可能在子目录
+          # 这里做个兜底查找
+          DHCP6C="$(find "build-${{ matrix.abi }}" -maxdepth 3 -type f -name "libdhcp6c.so" | head -n 1)"
+          DHCP6CTL="$(find "build-${{ matrix.abi }}" -maxdepth 3 -type f -name "libdhcp6ctl.so" | head -n 1)"
+          test -n "$DHCP6C"
+          test -n "$DHCP6CTL"
+          cp -v "$DHCP6C" "out/${{ matrix.abi }}/"
+          cp -v "$DHCP6CTL" "out/${{ matrix.abi }}/"
+
+          # 让它们在 Linux 上带可执行位（便于后续打包/使用）
+          chmod 755 "out/${{ matrix.abi }}/libdhcp6c.so" "out/${{ matrix.abi }}/libdhcp6ctl.so"
+
+          # 打印 ELF 信息，确认 ABI 正确
+          file "out/${{ matrix.abi }}/libdhcp6c.so" || true
+          file "out/${{ matrix.abi }}/libdhcp6ctl.so" || true
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dhcp6c-${{ matrix.abi }}
+          path: out/${{ matrix.abi }}/
+          if-no-files-found: error
