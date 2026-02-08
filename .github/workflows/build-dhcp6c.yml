@@ -1,4 +1,4 @@
-name: Build dhcp6c binaries (NDK)
+name: Build dhcp6c binaries (arm64-v8a)
 
 on:
   workflow_dispatch:
@@ -6,34 +6,39 @@ on:
     paths:
       - "mobile/CMakeLists.txt"
       - "mobile/src/main/cpp/**"
-      - ".github/workflows/build-dhcp6c.yml"
+      - ".github/workflows/build-dhcp6c-arm64.yml"
   pull_request:
     paths:
       - "mobile/CMakeLists.txt"
       - "mobile/src/main/cpp/**"
-      - ".github/workflows/build-dhcp6c.yml"
+      - ".github/workflows/build-dhcp6c-arm64.yml"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        abi: [arm64-v8a, armeabi-v7a, x86, x86_64]
 
     env:
       ANDROID_PLATFORM: android-21
+      ABI: arm64-v8a
       NDK_VERSION: 26.2.11394342
 
     steps:
-      - name: Checkout
+      - name: Checkout (with submodules + LFS)
         uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: "17"
+          submodules: recursive
+          lfs: true
+          fetch-depth: 0
+
+      - name: Debug: show cpp tree
+        shell: bash
+        run: |
+          set -euxo pipefail
+          ls -la mobile/src/main || true
+          ls -la mobile/src/main/cpp || true
+          find mobile/src/main/cpp -maxdepth 3 -type d -print || true
+          # Hard fail if the expected directory is missing
+          test -f mobile/src/main/cpp/wide-dhcpv6/addrconf.c
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -51,44 +56,39 @@ jobs:
         run: |
           set -euxo pipefail
           export ANDROID_NDK_HOME="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
-          cmake -S mobile -B "build-${{ matrix.abi }}" \
+          cmake -S mobile -B "build-${ABI}" \
             -G Ninja \
-            -DANDROID_ABI="${{ matrix.abi }}" \
+            -DANDROID_ABI="${ABI}" \
             -DANDROID_PLATFORM="${ANDROID_PLATFORM}" \
             -DANDROID_NDK="${ANDROID_NDK_HOME}" \
             -DCMAKE_TOOLCHAIN_FILE="${ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake" \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -Wno-dev
 
       - name: Build (CMake)
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build "build-${{ matrix.abi }}" --target libdhcp6c.so libdhcp6ctl.so
+          cmake --build "build-${ABI}" --target libdhcp6c.so libdhcp6ctl.so
 
       - name: Collect outputs
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p "out/${{ matrix.abi }}"
-          # Ninja 默认在 build目录里直接生成目标文件；不同生成器可能在子目录
-          # 这里做个兜底查找
-          DHCP6C="$(find "build-${{ matrix.abi }}" -maxdepth 3 -type f -name "libdhcp6c.so" | head -n 1)"
-          DHCP6CTL="$(find "build-${{ matrix.abi }}" -maxdepth 3 -type f -name "libdhcp6ctl.so" | head -n 1)"
+          mkdir -p "out/${ABI}"
+          DHCP6C="$(find "build-${ABI}" -maxdepth 5 -type f -name "libdhcp6c.so" | head -n 1)"
+          DHCP6CTL="$(find "build-${ABI}" -maxdepth 5 -type f -name "libdhcp6ctl.so" | head -n 1)"
           test -n "$DHCP6C"
           test -n "$DHCP6CTL"
-          cp -v "$DHCP6C" "out/${{ matrix.abi }}/"
-          cp -v "$DHCP6CTL" "out/${{ matrix.abi }}/"
-
-          # 让它们在 Linux 上带可执行位（便于后续打包/使用）
-          chmod 755 "out/${{ matrix.abi }}/libdhcp6c.so" "out/${{ matrix.abi }}/libdhcp6ctl.so"
-
-          # 打印 ELF 信息，确认 ABI 正确
-          file "out/${{ matrix.abi }}/libdhcp6c.so" || true
-          file "out/${{ matrix.abi }}/libdhcp6ctl.so" || true
+          cp -v "$DHCP6C" "out/${ABI}/"
+          cp -v "$DHCP6CTL" "out/${ABI}/"
+          chmod 755 "out/${ABI}/libdhcp6c.so" "out/${ABI}/libdhcp6ctl.so"
+          file "out/${ABI}/libdhcp6c.so" || true
+          file "out/${ABI}/libdhcp6ctl.so" || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dhcp6c-${{ matrix.abi }}
-          path: out/${{ matrix.abi }}/
+          name: dhcp6c-${{ env.ABI }}
+          path: out/${{ env.ABI }}/
           if-no-files-found: error
