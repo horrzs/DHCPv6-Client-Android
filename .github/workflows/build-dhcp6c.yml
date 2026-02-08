@@ -30,7 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build
 
-      - name: "Debug: verify wide-dhcpv6 sources exist"
+      - name: Debug - verify wide-dhcpv6 sources exist
         shell: bash
         run: |
           set -euxo pipefail
