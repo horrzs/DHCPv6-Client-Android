@@ -59,25 +59,27 @@ jobs:
 
           W="mobile/src/main/cpp/wide-dhcpv6"
 
-          # 1) 给所有用到 time() 的 .c 文件补 <time.h>
+          # 1) 给所有 .c 文件：如果出现 "time(" 且没 include <time.h>，就补上
           for f in "$W"/*.c; do
-            if grep -qE '\btime\s*\(' "$f"; then
-              if ! grep -qE '^\s*#\s*include\s*<time\.h>' "$f"; then
+            if grep -q "time(" "$f"; then
+              if ! grep -q '^#include <time.h>' "$f"; then
                 sed -i '1i#include <time.h>' "$f"
               fi
             fi
           done
 
-          # 2) bcmp -> memcmp（更通用）
-          sed -i 's/\bbcmp\s*(/memcmp(/g' "$W/common.c" || true)
+          # 2) common.c: bcmp -> memcmp（更稳）
+          if [ -f "$W/common.c" ]; then
+            sed -i 's/\bbcmp\s*(/memcmp(/g' "$W/common.c" || true
 
-          # 3) 确保 memcmp 声明可用
-          if ! grep -qE '^\s*#\s*include\s*<string\.h>' "$W/common.c"; then
-            sed -i '1i#include <string.h>' "$W/common.c"
+            # memcmp 需要 <string.h>
+            if ! grep -q '^#include <string.h>' "$W/common.c"; then
+              sed -i '1i#include <string.h>' "$W/common.c"
+            fi
           fi
 
-          # 输出确认一下（可选）
-          grep -n "include <time.h>" "$W"/*.c || true
+          # 3) 打印一下确认（可选）
+          grep -n '^#include <time.h>' "$W"/*.c || true
 
 
       - name: Configure (CMake)
