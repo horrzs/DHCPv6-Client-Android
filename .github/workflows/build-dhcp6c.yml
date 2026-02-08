@@ -39,6 +39,20 @@ jobs:
           find mobile/src/main/cpp -maxdepth 2 -type d -print || true
           test -f mobile/src/main/cpp/wide-dhcpv6/addrconf.c
 
+      - name: Patch source for NDK clang
+        shell: bash
+        run: |
+          set -euxo pipefail
+          F="mobile/src/main/cpp/wide-dhcpv6/addrconf.c"
+          # 如果没包含 time.h，就在第一个 #include 行前插入（或你也可以插到固定位置）
+          if ! grep -qE '^\s*#\s*include\s*<time\.h>' "$F"; then
+            # 在第一行 #include 前插入一行 #include <time.h>
+            awk 'NR==1{print} /^\s*#\s*include/ && !done {print "#include <time.h>"; done=1} {print}' "$F" > "$F.tmp"
+            mv "$F.tmp" "$F"
+          fi
+          grep -n "include <time.h>" -n "$F" || true
+
+
       - name: Configure (CMake)
         shell: bash
         run: |
