@@ -93,22 +93,22 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          cmake --build "build-${ABI}" --target libdhcp6c.so libdhcp6ctl.so
+          cmake --build "build-${ABI}" --target dhcp6c dhcp6ctl
 
       - name: Collect outputs
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p "out/${ABI}"
-          DHCP6C="$(find "build-${ABI}" -maxdepth 5 -type f -name "libdhcp6c.so" | head -n 1)"
-          DHCP6CTL="$(find "build-${ABI}" -maxdepth 5 -type f -name "libdhcp6ctl.so" | head -n 1)"
+          DHCP6C="$(find "build-${ABI}" -maxdepth 5 -type f -name "dhcp6c" | head -n 1)"
+          DHCP6CTL="$(find "build-${ABI}" -maxdepth 5 -type f -name "dhcp6ctl" | head -n 1)"
           test -n "${DHCP6C}"
           test -n "${DHCP6CTL}"
           cp -v "${DHCP6C}" "out/${ABI}/"
           cp -v "${DHCP6CTL}" "out/${ABI}/"
-          chmod 755 "out/${ABI}/libdhcp6c.so" "out/${ABI}/libdhcp6ctl.so"
-          file "out/${ABI}/libdhcp6c.so" || true
-          file "out/${ABI}/libdhcp6ctl.so" || true
+          chmod 755 "out/${ABI}/dhcp6c" "out/${ABI}/dhcp6ctl"
+          file "out/${ABI}/dhcp6c" || true
+          file "out/${ABI}/dhcp6ctl" || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
